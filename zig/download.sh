@@ -12,6 +12,8 @@ ZIG_RELEASE="0.17.0-dev.1609+11e2bb391"
 ZIG_CHECKSUMS=$(cat<<EOF
 ${ZIG_MIRROR}/zig-aarch64-macos-${ZIG_RELEASE}.tar.xz 7b1e292828d33c4f1fc2ca042c84b6bd980b56e0fb638f31f111809d243d728e
 ${ZIG_MIRROR}/zig-x86_64-macos-${ZIG_RELEASE}.tar.xz eab2350d8f09504ce0a12dc38ec4f7690a0accd16df030327e37bd4a884f9aeb
+${ZIG_MIRROR}/zig-aarch64-linux-${ZIG_RELEASE}.tar.xz c6c25da2308723fa2d956c9f2100237d69aadd3297c286851ec928a2fc309b54
+${ZIG_MIRROR}/zig-x86_64-linux-${ZIG_RELEASE}.tar.xz be19b234c47af01f0333fcb7212a59840c2ba3531ed9374cd79b3695c48a66c9
 EOF
 )
 
@@ -26,6 +28,9 @@ fi
 case "$(uname)" in
     Darwin)
         ZIG_OS="macos"
+        ;;
+    Linux)
+        ZIG_OS="linux"
         ;;
     *)
         echo "unknown OS"
