@@ -1,37 +1,25 @@
 const std = @import("std");
 const Io = std.Io;
+const process = std.process;
 
 const kift = @import("kift");
 
 pub fn main(init: std.process.Init) !void {
-    // Prints to stderr, unbuffered, ignoring potential errors.
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-
     const build_options = @import("build_options");
     std.debug.print("[{s}@{s}] Hello, {s}!\n", .{ build_options.version, build_options.git_commit, build_options.name });
 
-    // This is appropriate for anything that lives as long as the process.
     const arena: std.mem.Allocator = init.arena.allocator();
 
-    // Accessing command line arguments:
-    const args = try init.minimal.args.toSlice(arena);
-    for (args) |arg| {
-        std.log.info("arg: {s}", .{arg});
-    }
+    var args = try process.Args.Iterator.initAllocator(init.minimal.args, arena);
+    defer args.deinit();
 
-    // In order to do I/O operations need an `Io` instance.
-    const io = init.io;
+    // skip program name
+    _ = args.next();
 
-    // Stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_file_writer: Io.File.Writer = .init(.stdout(), io, &stdout_buffer);
-    const stdout_writer = &stdout_file_writer.interface;
+    const cmd = args.next() orelse return error.Usage;
+    std.debug.print("running command: {s}\n", .{cmd});
 
-    try kift.printAnotherMessage(stdout_writer);
-
-    try stdout_writer.flush(); // Don't forget to flush!
+    // TODO: dispatch to subcommands based on `cmd`
 }
 
 test "simple test" {
