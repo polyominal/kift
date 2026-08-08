@@ -7,6 +7,9 @@ pub fn main(init: std.process.Init) !void {
     // Prints to stderr, unbuffered, ignoring potential errors.
     std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
 
+    const build_options = @import("build_options");
+    std.debug.print("[{s}@{s}] Hello, {s}!\n", .{ build_options.version, build_options.git_commit, build_options.name });
+
     // This is appropriate for anything that lives as long as the process.
     const arena: std.mem.Allocator = init.arena.allocator();
 
