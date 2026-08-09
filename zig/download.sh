@@ -38,6 +38,17 @@ case "$(uname)" in
         ;;
 esac
 
+# only the host tuples we test against are supported; anything else fails
+# fast here instead of with a confusing curl/checksum error below
+case "${ZIG_ARCH}-${ZIG_OS}" in
+    aarch64-macos | x86_64-linux) ;;
+    *)
+        echo "unsupported host tuple: ${ZIG_ARCH}-${ZIG_OS}"
+        echo "supported: aarch64-macos, x86_64-linux"
+        exit 1
+        ;;
+esac
+
 ZIG_EXTENSION=".tar.xz"
 
 ZIG_URL="${ZIG_MIRROR}/zig-${ZIG_ARCH}-${ZIG_OS}-${ZIG_RELEASE}${ZIG_EXTENSION}"
