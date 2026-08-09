@@ -40,6 +40,86 @@ pub fn build(b: *std.Build) void {
         };
     };
 
+    const libusb_lib = blk: {
+        const upstream = b.lazyDependency("libusb", .{}) orelse break :blk null;
+        const lib = b.addLibrary(.{
+            .name = "libusb",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            }),
+            .linkage = .static,
+        });
+        lib.root_module.addIncludePath(b.path("vendor/libusb"));
+        lib.root_module.addIncludePath(upstream.path("libusb"));
+        lib.root_module.addCSourceFiles(.{
+            .root = upstream.path("libusb"),
+            .files = &.{
+                "core.c",
+                "descriptor.c",
+                "hotplug.c",
+                "io.c",
+                "strerror.c",
+                "sync.c",
+                "os/events_posix.c",
+                "os/threads_posix.c",
+                "os/darwin_usb.c",
+            },
+            .flags = &.{ "-fvisibility=hidden", "-pthread" },
+        });
+        if (target.result.os.tag.isDarwin()) {
+            lib.root_module.linkFramework("IOKit", .{});
+            lib.root_module.linkFramework("CoreFoundation", .{});
+            lib.root_module.linkFramework("Security", .{});
+        }
+        break :blk lib;
+    };
+
+    const libmtp_lib = blk: {
+        const upstream = b.lazyDependency("libmtp", .{}) orelse break :blk null;
+        const lub = libusb_lib orelse break :blk null;
+        const libusb_upstream = b.lazyDependency("libusb", .{}) orelse break :blk null;
+        const lib = b.addLibrary(.{
+            .name = "libmtp",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            }),
+            .linkage = .static,
+        });
+        lib.root_module.addIncludePath(b.path("vendor/libmtp"));
+        lib.root_module.addIncludePath(upstream.path("src"));
+        // libusb-glue.h includes <libusb.h> from our libusb dependency.
+        lib.root_module.addIncludePath(libusb_upstream.path("libusb"));
+        lib.root_module.addCSourceFiles(.{
+            .root = upstream.path("src"),
+            .files = &.{
+                "libmtp.c",
+                "unicode.c",
+                "util.c",
+                "playlist-spl.c",
+                "ptp.c",
+                "libusb1-glue.c",
+            },
+            .flags = &.{
+                "-fvisibility=hidden",
+                // libmtp 1.1.23 has a signed-shift UB bug (ptp-pack.c:103,
+                // le32atoh) tripped by the my Kindle Colorsoft's
+                // FreeSpaceInImages=0xFFFFFFFF🥴; Debug C builds panic on it
+                // otherwise.
+                "-fno-sanitize=shift",
+            },
+        });
+        lib.root_module.linkLibrary(lub);
+        // iconv is not part of libSystem on macOS?
+        if (target.result.os.tag.isDarwin()) {
+            lib.root_module.linkSystemLibrary("iconv", .{});
+        }
+        break :blk lib;
+    };
+
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "name", name);
     build_options.addOption([]const u8, "version", "2.3.3");
@@ -64,6 +144,10 @@ pub fn build(b: *std.Build) void {
         // which requires us to specify a target.
         .target = target,
     });
+    // The C libs must be reachable from the module too, so the test step
+    // (b.addTest on mod) can link LIBMTP_* / libusb symbols.
+    if (libusb_lib) |l| mod.linkLibrary(l);
+    if (libmtp_lib) |l| mod.linkLibrary(l);
 
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
@@ -107,6 +191,26 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.addOptions("build_options", build_options);
+    if (libusb_lib) |l| exe.root_module.linkLibrary(l);
+    if (libmtp_lib) |l| exe.root_module.linkLibrary(l);
+
+    // `zig build detect`
+    const detect = b.addExecutable(.{
+        .name = "detect",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/detect.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    if (libusb_lib) |l| detect.root_module.linkLibrary(l);
+    if (libmtp_lib) |l| detect.root_module.linkLibrary(l);
+    b.installArtifact(detect);
+    const detect_step = b.step("detect", "Detect and dump connected MTP devices");
+    const detect_cmd = b.addRunArtifact(detect);
+    detect_step.dependOn(&detect_cmd.step);
+    detect_cmd.step.dependOn(b.getInstallStep());
+    detect_cmd.addPassthruArgs();
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
