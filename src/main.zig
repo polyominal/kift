@@ -2,7 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const process = std.process;
 
-const kift = @import("kift");
+const libmtp = @import("libmtp.zig");
 
 pub fn main(init: std.process.Init) !void {
     const build_options = @import("build_options");

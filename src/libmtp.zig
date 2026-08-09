@@ -88,7 +88,7 @@ pub const LIBMTP_STORAGE_SORTBY_NOTSORTED: c_int = 0;
 
 pub extern fn LIBMTP_Init() void;
 pub extern fn LIBMTP_Detect_Raw_Devices(devices: [*c][*c]LIBMTP_raw_device_t, numdevs: [*c]c_int) c_int;
-pub extern fn LIBMTP_Open_Raw_Device_Uncached(raw_device: [*c]LIBMTP_raw_device_t) ?*LIBMTP_mtpdevice_t;
+pub extern fn LIBMTP_Open_Raw_Device([*c]LIBMTP_raw_device_t) ?*LIBMTP_mtpdevice_t;
 pub extern fn LIBMTP_Release_Device(device: ?*LIBMTP_mtpdevice_t) void;
 pub extern fn LIBMTP_FreeMemory(ptr: ?*anyopaque) void;
 pub extern fn LIBMTP_Dump_Device_Info(device: ?*LIBMTP_mtpdevice_t) void;
@@ -97,16 +97,12 @@ pub extern fn LIBMTP_Get_Modelname(device: ?*LIBMTP_mtpdevice_t) [*c]u8;
 pub extern fn LIBMTP_Get_Serialnumber(device: ?*LIBMTP_mtpdevice_t) [*c]u8;
 pub extern fn LIBMTP_Get_Friendlyname(device: ?*LIBMTP_mtpdevice_t) [*c]u8;
 pub extern fn LIBMTP_Get_Batterylevel(device: ?*LIBMTP_mtpdevice_t, max: [*c]u8, current: [*c]u8) c_int;
-pub extern fn LIBMTP_Get_Files_And_Folders(
-    device: *LIBMTP_mtpdevice_t,
-    storage_id: u32,
-    leaf: u32,
-    files: [*c][*c]LIBMTP_file_t,
-    folders: [*c][*c]LIBMTP_folder_t,
-) [*c]LIBMTP_file_t;
 pub extern fn LIBMTP_Dump_Errorstack(device: ?*LIBMTP_mtpdevice_t) void;
 pub extern fn LIBMTP_Get_Storage(device: ?*LIBMTP_mtpdevice_t, sortby: c_int) c_int;
 pub extern fn LIBMTP_Clear_Errorstack(device: ?*LIBMTP_mtpdevice_t) void;
+
+pub extern fn LIBMTP_Get_Filelisting_With_Callback([*c]LIBMTP_mtpdevice_t, ?*const anyopaque, ?*const anyopaque) [*c]LIBMTP_file_t;
+pub extern fn LIBMTP_Get_Folder_List([*c]LIBMTP_mtpdevice_t) [*c]LIBMTP_folder_t;
 
 test "libmtp links and inits" {
     LIBMTP_Init();

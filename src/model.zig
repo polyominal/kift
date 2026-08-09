@@ -16,7 +16,7 @@ const ID = u32;
 
 const SnapshotError = error{ OutOfMemory, NestingTooDeep };
 
-fn snapshot(
+pub fn snapshot(
     allocator: Allocator,
     folder_list: ?*LIBMTP_folder_t,
     file_list: ?*LIBMTP_file_t,
@@ -189,7 +189,7 @@ pub const Listing = struct {
         allocator.free(listing.files);
     }
 
-    fn render(listing: *const Listing, writer: *Io.Writer, allocator: Allocator) !void {
+    pub fn render(listing: *const Listing, writer: *Io.Writer, allocator: Allocator) !void {
         // Group files by parent_id so each folder renders its files in O(1).
         var files_by_parent: std.AutoHashMapUnmanaged(ID, std.ArrayListUnmanaged(File)) = .empty;
         for (listing.files) |*file| {
