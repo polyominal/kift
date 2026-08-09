@@ -23,13 +23,49 @@ pub const LIBMTP_folder_t = extern struct {
     child: [*c]LIBMTP_folder_t,
 };
 
-comptime {
-    std.debug.assert(@sizeOf(LIBMTP_file_t) == 56);
-    std.debug.assert(@offsetOf(LIBMTP_file_t, "next") == 48);
-    std.debug.assert(@sizeOf(LIBMTP_folder_t) == 40);
-}
+// opaque stand-ins for lists we must never dereference (header says so
+// explicitly for errorstack; extensions is unused for now)
+pub const LIBMTP_error_t = opaque {};
+pub const LIBMTP_device_extension_t = opaque {};
 
-pub const LIBMTP_mtpdevice_t = opaque {};
+// mapped from LIBMTP_devicestorage_struct in libmtp.h.in
+pub const LIBMTP_devicestorage_t = extern struct {
+    id: u32,
+    StorageType: u16,
+    FilesystemType: u16,
+    AccessCapability: u16,
+    MaxCapacity: u64,
+    FreeSpaceInBytes: u64,
+    FreeSpaceInObjects: u64,
+    StorageDescription: [*c]u8,
+    VolumeIdentifier: [*c]u8,
+    next: [*c]LIBMTP_devicestorage_t,
+    prev: [*c]LIBMTP_devicestorage_t,
+};
+
+// mapped from LIBMTP_mtpdevice_struct in libmtp.h.in
+pub const LIBMTP_mtpdevice_t = extern struct {
+    object_bitsize: u8,
+    params: ?*anyopaque,
+    usbinfo: ?*anyopaque,
+    storage: ?*LIBMTP_devicestorage_t,
+    // opaque types can't take [*c] pointers;
+    // ?* matches the C pointer ABI anyway
+    errorstack: ?*LIBMTP_error_t,
+    maximum_battery_level: u8,
+    default_music_folder: u32,
+    default_playlist_folder: u32,
+    default_picture_folder: u32,
+    default_video_folder: u32,
+    default_organizer_folder: u32,
+    default_zencast_folder: u32,
+    default_album_folder: u32,
+    default_text_folder: u32,
+    cd: ?*anyopaque,
+    extensions: ?*LIBMTP_device_extension_t,
+    cached: c_int,
+    next: [*c]LIBMTP_mtpdevice_t,
+};
 
 // libmtp.h.in:532 and :544: raw devices are a complete struct array
 // (Detect_Raw_Devices fills an array base, examples index rawdevices[i]).
@@ -48,6 +84,7 @@ pub const LIBMTP_raw_device_t = extern struct {
 };
 
 pub extern var LIBMTP_debug: c_int;
+pub const LIBMTP_STORAGE_SORTBY_NOTSORTED: c_int = 0;
 
 pub extern fn LIBMTP_Init() void;
 pub extern fn LIBMTP_Detect_Raw_Devices(devices: [*c][*c]LIBMTP_raw_device_t, numdevs: [*c]c_int) c_int;
@@ -68,6 +105,8 @@ pub extern fn LIBMTP_Get_Files_And_Folders(
     folders: [*c][*c]LIBMTP_folder_t,
 ) [*c]LIBMTP_file_t;
 pub extern fn LIBMTP_Dump_Errorstack(device: ?*LIBMTP_mtpdevice_t) void;
+pub extern fn LIBMTP_Get_Storage(device: ?*LIBMTP_mtpdevice_t, sortby: c_int) c_int;
+pub extern fn LIBMTP_Clear_Errorstack(device: ?*LIBMTP_mtpdevice_t) void;
 
 test "libmtp links and inits" {
     LIBMTP_Init();
@@ -99,4 +138,13 @@ test "bindings match translate-c ABI" {
     try std.testing.expectEqual(@sizeOf(LIBMTP_device_entry_t), @sizeOf(translated.LIBMTP_device_entry_t));
     try std.testing.expectEqual(@offsetOf(LIBMTP_device_entry_t, "vendor"), @offsetOf(translated.LIBMTP_device_entry_t, "vendor"));
     try std.testing.expectEqual(@offsetOf(LIBMTP_device_entry_t, "product_id"), @offsetOf(translated.LIBMTP_device_entry_t, "product_id"));
+
+    try std.testing.expectEqual(@sizeOf(LIBMTP_mtpdevice_t), @sizeOf(translated.LIBMTP_mtpdevice_t));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_mtpdevice_t, "storage"), @offsetOf(translated.LIBMTP_mtpdevice_t, "storage"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_mtpdevice_t, "next"), @offsetOf(translated.LIBMTP_mtpdevice_t, "next"));
+
+    try std.testing.expectEqual(@sizeOf(LIBMTP_devicestorage_t), @sizeOf(translated.LIBMTP_devicestorage_t));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_devicestorage_t, "id"), @offsetOf(translated.LIBMTP_devicestorage_t, "id"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_devicestorage_t, "MaxCapacity"), @offsetOf(translated.LIBMTP_devicestorage_t, "MaxCapacity"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_devicestorage_t, "prev"), @offsetOf(translated.LIBMTP_devicestorage_t, "prev"));
 }
