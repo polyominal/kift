@@ -77,6 +77,24 @@ fn traverse_folder(
     };
 }
 
+fn find_folder_id(listing: *const Listing, path: []const u8) error{NotFound}!ID {
+    var folders = listing.folders;
+    var components = mem.splitScalar(u8, path, '/');
+    const first = components.next() orelse return error.NotFound;
+    var target = first;
+    var result: ID = undefined;
+    while (true) {
+        for (folders) |folder| {
+            if (mem.eql(u8, folder.name, target)) {
+                result = folder.id;
+                target = components.next() orelse return result;
+                folders = folder.children;
+                break;
+            }
+        } else return error.NotFound;
+    }
+}
+
 const File = struct {
     id: ID,
     parent_id: ID,
@@ -499,4 +517,44 @@ test "snapshot bounds cyclic folder trees" {
     loop.child = &loop;
 
     try std.testing.expectError(error.NestingTooDeep, snapshot(a, &loop, null, 100));
+}
+
+test "find_folder_id resolves component paths" {
+    const a = std.testing.allocator;
+    var listing = try fixture(a);
+    defer listing.deinit(a);
+
+    try std.testing.expectEqual(@as(u32, 1), try find_folder_id(&listing, "Kindle"));
+    try std.testing.expectEqual(@as(u32, 2), try find_folder_id(&listing, "Kindle/Books"));
+    try std.testing.expectEqual(@as(u32, 3), try find_folder_id(&listing, "Kindle/Books/Readings"));
+    try std.testing.expectEqual(@as(u32, 5), try find_folder_id(&listing, "Kindle/Periodicals"));
+    try std.testing.expectEqual(@as(u32, 4), try find_folder_id(&listing, "Music"));
+    try std.testing.expectEqual(@as(u32, 6), try find_folder_id(&listing, "Music/Albums"));
+}
+
+test "find_folder_id fails on unknown components" {
+    const a = std.testing.allocator;
+    var listing = try fixture(a);
+    defer listing.deinit(a);
+
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "NoSuch"));
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "Kindle/Missing"));
+    try std.testing.expectError(
+        error.NotFound,
+        find_folder_id(&listing, "Kindle/Books/Readings/Missing"),
+    );
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "kindle"));
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "MUSIC"));
+}
+
+test "find_folder_id rejects empty and slashed paths" {
+    const a = std.testing.allocator;
+    var listing = try fixture(a);
+    defer listing.deinit(a);
+
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, ""));
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "/"));
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "/Kindle"));
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "Kindle/"));
+    try std.testing.expectError(error.NotFound, find_folder_id(&listing, "Kindle//Books"));
 }
