@@ -1,6 +1,8 @@
 const std = @import("std");
+const process = std.process;
 const log = std.log.scoped(.detect);
 const libmtp = @import("libmtp.zig");
+const model = @import("model.zig");
 
 fn cstr(ptr: [*c]u8) []const u8 {
     return if (ptr) |p| std.mem.span(p) else "(null)";
@@ -11,7 +13,10 @@ fn dump_and_clear(device: ?*libmtp.LIBMTP_mtpdevice_t) void {
     libmtp.LIBMTP_Clear_Errorstack(device);
 }
 
-pub fn main() !void {
+pub fn main(init: process.Init) !void {
+    const io = init.io;
+    const allocator = init.arena.allocator();
+
     libmtp.LIBMTP_Init();
     libmtp.LIBMTP_debug = 1;
 
@@ -20,9 +25,12 @@ pub fn main() !void {
     const err = libmtp.LIBMTP_Detect_Raw_Devices(&rawdevices, &numrawdevices);
     if (err != 0 or numrawdevices == 0) {
         log.err("no MTP devices found (err={d})", .{err});
-        dump_and_clear(null);
         return;
     }
+
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_file_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_file_writer.interface;
 
     log.info("found {d} raw device(s)", .{numrawdevices});
     for (0..@intCast(numrawdevices)) |i| {
@@ -35,11 +43,18 @@ pub fn main() !void {
             cstr(raw.device_entry.product),
         });
 
-        const device = libmtp.LIBMTP_Open_Raw_Device_Uncached(raw) orelse {
+        const device = libmtp.LIBMTP_Open_Raw_Device(raw) orelse {
             log.err("failed to open device", .{});
             continue;
         };
         defer libmtp.LIBMTP_Release_Device(device);
+
+        const folder_list = libmtp.LIBMTP_Get_Folder_List(device);
+        const file_list = libmtp.LIBMTP_Get_Filelisting_With_Callback(device, null, null);
+        const listing = try model.snapshot(allocator, folder_list, file_list, 100);
+        log.info("snapshot: {d} files, {d} folders", .{ listing.files.len, listing.folders.len });
+        try listing.render(stdout, allocator);
+        try stdout.flush();
 
         log.info("device: {s} / {s}", .{
             cstr(libmtp.LIBMTP_Get_Manufacturername(device)),
@@ -74,9 +89,6 @@ pub fn main() !void {
             });
             storage = s.next;
         }
-
-        log.info("--- full device info ---", .{});
-        libmtp.LIBMTP_Dump_Device_Info(device);
     }
 
     libmtp.LIBMTP_FreeMemory(rawdevices);
