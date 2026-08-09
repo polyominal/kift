@@ -132,9 +132,20 @@ pub fn build(b: *std.Build) !void {
     build_options.addOption([]const u8, "version", "2.3.3");
     build_options.addOption([]const u8, "git_commit", git_commit);
 
+    const abi_translate = std.Build.Step.TranslateC.create(b, .{
+        .root_source_file = b.path("vendor/libmtp/libmtp.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    abi_translate.addIncludePath(b.path("vendor/libmtp"));
+    const abi_module = abi_translate.createModule();
+
     const mod = b.addModule("kift", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "libmtp_translated", .module = abi_module },
+        },
     });
     // The C libs must be reachable from the module too, so the test step
     // (b.addTest on mod) can link LIBMTP_* / libusb symbols.

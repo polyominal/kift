@@ -73,3 +73,30 @@ test "libmtp links and inits" {
     LIBMTP_Init();
     LIBMTP_debug = 1;
 }
+
+test "bindings match translate-c ABI" {
+    const translated = @import("libmtp_translated");
+    try std.testing.expectEqual(@sizeOf(LIBMTP_file_t), @sizeOf(translated.LIBMTP_file_t));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_file_t, "item_id"), @offsetOf(translated.LIBMTP_file_t, "item_id"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_file_t, "parent_id"), @offsetOf(translated.LIBMTP_file_t, "parent_id"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_file_t, "filename"), @offsetOf(translated.LIBMTP_file_t, "filename"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_file_t, "filesize"), @offsetOf(translated.LIBMTP_file_t, "filesize"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_file_t, "modificationdate"), @offsetOf(translated.LIBMTP_file_t, "modificationdate"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_file_t, "filetype"), @offsetOf(translated.LIBMTP_file_t, "filetype"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_file_t, "next"), @offsetOf(translated.LIBMTP_file_t, "next"));
+
+    try std.testing.expectEqual(@sizeOf(LIBMTP_folder_t), @sizeOf(translated.LIBMTP_folder_t));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_folder_t, "folder_id"), @offsetOf(translated.LIBMTP_folder_t, "folder_id"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_folder_t, "name"), @offsetOf(translated.LIBMTP_folder_t, "name"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_folder_t, "sibling"), @offsetOf(translated.LIBMTP_folder_t, "sibling"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_folder_t, "child"), @offsetOf(translated.LIBMTP_folder_t, "child"));
+
+    try std.testing.expectEqual(@sizeOf(LIBMTP_raw_device_t), @sizeOf(translated.LIBMTP_raw_device_t));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_raw_device_t, "device_entry"), @offsetOf(translated.LIBMTP_raw_device_t, "device_entry"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_raw_device_t, "bus_location"), @offsetOf(translated.LIBMTP_raw_device_t, "bus_location"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_raw_device_t, "devnum"), @offsetOf(translated.LIBMTP_raw_device_t, "devnum"));
+
+    try std.testing.expectEqual(@sizeOf(LIBMTP_device_entry_t), @sizeOf(translated.LIBMTP_device_entry_t));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_device_entry_t, "vendor"), @offsetOf(translated.LIBMTP_device_entry_t, "vendor"));
+    try std.testing.expectEqual(@offsetOf(LIBMTP_device_entry_t, "product_id"), @offsetOf(translated.LIBMTP_device_entry_t, "product_id"));
+}
