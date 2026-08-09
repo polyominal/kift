@@ -1,6 +1,11 @@
 const std = @import("std");
 const Io = std.Io;
+const mem = std.mem;
 const Allocator = std.mem.Allocator;
+
+const libmtp = @import("libmtp.zig");
+const LIBMTP_file_t = libmtp.LIBMTP_file_t;
+const LIBMTP_folder_t = libmtp.LIBMTP_folder_t;
 
 const bar_vertical = "\xe2\x94\x82  "; // │ (U+2502) + two spaces: line continues below
 const bar_blank = "   "; // line stops below
@@ -8,6 +13,69 @@ const elbow_last = "\xe2\x94\x94\xe2\x94\x80 "; // └ (U+2514) + ─ (U+2500): 
 const elbow_mid = "\xe2\x94\x9c\xe2\x94\x80 "; // ├ (U+251C) + ─ (U+2500): more children
 
 const ID = u32;
+
+const SnapshotError = error{ OutOfMemory, NestingTooDeep };
+
+fn snapshot(
+    allocator: Allocator,
+    folder_list: ?*LIBMTP_folder_t,
+    file_list: ?*LIBMTP_file_t,
+    max_depth: usize,
+) SnapshotError!Listing {
+    var folders: std.ArrayListUnmanaged(Folder) = .empty;
+    defer folders.deinit(allocator);
+    var raw_folder = folder_list;
+    while (raw_folder) |node| {
+        const folder = try traverse_folder(allocator, node, 0, max_depth);
+        try folders.append(allocator, folder);
+        raw_folder = node.sibling;
+    }
+
+    var files: std.ArrayListUnmanaged(File) = .empty;
+    defer files.deinit(allocator);
+    var raw_file = file_list;
+    while (raw_file) |node| {
+        const file: File = .{
+            .id = node.item_id,
+            .parent_id = node.parent_id,
+            .name = try allocator.dupe(u8, mem.span(node.filename)),
+            .size = node.filesize,
+        };
+        try files.append(allocator, file);
+        raw_file = node.next;
+    }
+
+    return .{
+        .folders = try folders.toOwnedSlice(allocator),
+        .files = try files.toOwnedSlice(allocator),
+    };
+}
+
+fn traverse_folder(
+    allocator: Allocator,
+    folder: *LIBMTP_folder_t,
+    depth: usize,
+    max_depth: usize,
+) SnapshotError!Folder {
+    if (max_depth < depth) {
+        return error.NestingTooDeep;
+    }
+
+    var children: std.ArrayListUnmanaged(Folder) = .empty;
+    defer children.deinit(allocator);
+    var child: ?*LIBMTP_folder_t = folder.child;
+    while (child) |node| {
+        const child_folder = try traverse_folder(allocator, node, depth + 1, max_depth);
+        try children.append(allocator, child_folder);
+        child = node.sibling;
+    }
+
+    return .{
+        .id = folder.folder_id,
+        .name = try allocator.dupe(u8, mem.span(folder.name)),
+        .children = try children.toOwnedSlice(allocator),
+    };
+}
 
 const File = struct {
     id: ID,
@@ -158,95 +226,137 @@ fn collect_folder_ids(
 
 // AI-generated bs for testing
 fn fixture(allocator: Allocator) !Listing {
-    const readings = try allocator.alloc(Folder, 1);
-    readings[0] = .{
-        .id = 3,
-        .name = try allocator.dupe(u8, "Readings"),
-        .children = &.{},
-    };
-
-    const kindle_children = try allocator.alloc(Folder, 2);
-    kindle_children[0] = .{
-        .id = 2,
-        .name = try allocator.dupe(u8, "Books"),
-        .children = readings,
-    };
-    kindle_children[1] = .{
-        .id = 5,
-        .name = try allocator.dupe(u8, "Periodicals"),
-        .children = &.{},
-    };
-
-    const music_children = try allocator.alloc(Folder, 1);
-    music_children[0] = .{
-        .id = 6,
-        .name = try allocator.dupe(u8, "Albums"),
-        .children = &.{},
-    };
-
-    const roots = try allocator.alloc(Folder, 2);
-    roots[0] = .{
-        .id = 1,
-        .name = try allocator.dupe(u8, "Kindle"),
-        .children = kindle_children,
-    };
-    roots[1] = .{
-        .id = 4,
-        .name = try allocator.dupe(u8, "Music"),
-        .children = music_children,
-    };
-
-    const files = try allocator.alloc(File, 8);
-    files[0] = .{
-        .id = 100,
-        .parent_id = 1,
-        .name = try allocator.dupe(u8, "cover.png"),
-        .size = 1024,
-    };
-    files[1] = .{
-        .id = 101,
-        .parent_id = 2,
-        .name = try allocator.dupe(u8, "book.pdf"),
-        .size = 2048,
-    };
-    files[2] = .{
-        .id = 102,
-        .parent_id = 3,
-        .name = try allocator.dupe(u8, "reading.txt"),
-        .size = 512,
-    };
-    files[3] = .{
-        .id = 103,
-        .parent_id = 5,
-        .name = try allocator.dupe(u8, "mag.pdf"),
-        .size = 3072,
-    };
-    files[4] = .{
-        .id = 104,
-        .parent_id = 4,
-        .name = try allocator.dupe(u8, "track.mp3"),
-        .size = 8192,
-    };
-    files[5] = .{
-        .id = 105,
-        .parent_id = 6,
-        .name = try allocator.dupe(u8, "album.flac"),
-        .size = 65536,
-    };
-    files[6] = .{
-        .id = 106,
+    var readings = LIBMTP_folder_t{
+        .folder_id = 3,
         .parent_id = 0,
-        .name = try allocator.dupe(u8, "notes.txt"),
-        .size = 64,
+        .storage_id = 0,
+        .name = @constCast("Readings"),
+        .sibling = null,
+        .child = null,
     };
-    files[7] = .{
-        .id = 107,
-        .parent_id = 999,
-        .name = try allocator.dupe(u8, "mystery.dat"),
-        .size = 1,
+    var periodicals = LIBMTP_folder_t{
+        .folder_id = 5,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Periodicals"),
+        .sibling = null,
+        .child = null,
+    };
+    var books = LIBMTP_folder_t{
+        .folder_id = 2,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Books"),
+        .sibling = &periodicals,
+        .child = &readings,
+    };
+    var albums = LIBMTP_folder_t{
+        .folder_id = 6,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Albums"),
+        .sibling = null,
+        .child = null,
+    };
+    var music = LIBMTP_folder_t{
+        .folder_id = 4,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Music"),
+        .sibling = null,
+        .child = &albums,
+    };
+    var kindle = LIBMTP_folder_t{
+        .folder_id = 1,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Kindle"),
+        .sibling = &music,
+        .child = &books,
     };
 
-    return .{ .folders = roots, .files = files };
+    var f107 = LIBMTP_file_t{
+        .item_id = 107,
+        .parent_id = 999,
+        .storage_id = 0,
+        .filename = @constCast("mystery.dat"),
+        .filesize = 1,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = null,
+    };
+    var f106 = LIBMTP_file_t{
+        .item_id = 106,
+        .parent_id = 0,
+        .storage_id = 0,
+        .filename = @constCast("notes.txt"),
+        .filesize = 64,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = &f107,
+    };
+    var f105 = LIBMTP_file_t{
+        .item_id = 105,
+        .parent_id = 6,
+        .storage_id = 0,
+        .filename = @constCast("album.flac"),
+        .filesize = 65536,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = &f106,
+    };
+    var f104 = LIBMTP_file_t{
+        .item_id = 104,
+        .parent_id = 4,
+        .storage_id = 0,
+        .filename = @constCast("track.mp3"),
+        .filesize = 8192,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = &f105,
+    };
+    var f103 = LIBMTP_file_t{
+        .item_id = 103,
+        .parent_id = 5,
+        .storage_id = 0,
+        .filename = @constCast("mag.pdf"),
+        .filesize = 3072,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = &f104,
+    };
+    var f102 = LIBMTP_file_t{
+        .item_id = 102,
+        .parent_id = 3,
+        .storage_id = 0,
+        .filename = @constCast("reading.txt"),
+        .filesize = 512,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = &f103,
+    };
+    var f101 = LIBMTP_file_t{
+        .item_id = 101,
+        .parent_id = 2,
+        .storage_id = 0,
+        .filename = @constCast("book.pdf"),
+        .filesize = 2048,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = &f102,
+    };
+    var f100 = LIBMTP_file_t{
+        .item_id = 100,
+        .parent_id = 1,
+        .storage_id = 0,
+        .filename = @constCast("cover.png"),
+        .filesize = 1024,
+        .modificationdate = 0,
+        .filetype = 0,
+        .next = &f101,
+    };
+
+    return snapshot(allocator, &kindle, &f100, 10);
 }
 
 test "fixture has the expected structure" {
@@ -274,7 +384,17 @@ test "fixture without deinit detected as leaks" {
 
     _ = try fixture(counted.allocator());
 
-    try std.testing.expectEqual(counted.allocations, safe.deinitLog(false));
+    try std.testing.expect(safe.deinitLog(false) > 0);
+}
+
+test "fixture deinit frees everything" {
+    var safe = std.heap.SafeAllocator.init(std.heap.page_allocator, .{});
+    var counted = std.testing.FailingAllocator.init(safe.allocator(), .{});
+
+    var listing = try fixture(counted.allocator());
+    listing.deinit(counted.allocator());
+
+    try std.testing.expectEqual(@as(usize, 0), safe.deinitLog(false));
 }
 
 test "render produces the expected tree" {
@@ -318,4 +438,65 @@ test "render produces the expected tree" {
             "mystery.dat  id=107, size=1\n",
         rendered,
     );
+}
+
+test "snapshot with null inputs" {
+    const a = std.testing.allocator;
+    const listing = try snapshot(a, null, null, 233);
+    defer listing.deinit(a);
+    try std.testing.expectEqual(@as(usize, 0), listing.folders.len);
+    try std.testing.expectEqual(@as(usize, 0), listing.files.len);
+}
+
+test "snapshot rejects folders beyond max_depth" {
+    const a = std.testing.allocator;
+
+    // Kindle(0) -> Books(1) -> Readings(2)
+    var readings = LIBMTP_folder_t{
+        .folder_id = 3,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Readings"),
+        .sibling = null,
+        .child = null,
+    };
+    var books = LIBMTP_folder_t{
+        .folder_id = 2,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Books"),
+        .sibling = null,
+        .child = &readings,
+    };
+    var kindle = LIBMTP_folder_t{
+        .folder_id = 1,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Kindle"),
+        .sibling = null,
+        .child = &books,
+    };
+
+    try std.testing.expectError(error.NestingTooDeep, snapshot(a, &kindle, null, 1));
+
+    const listing = try snapshot(a, &kindle, null, 2);
+    defer listing.deinit(a);
+    try std.testing.expectEqual(@as(usize, 1), listing.folders.len);
+    try std.testing.expectEqual(@as(usize, 1), listing.folders[0].children.len);
+}
+
+test "snapshot bounds cyclic folder trees" {
+    const a = std.testing.allocator;
+
+    var loop = LIBMTP_folder_t{
+        .folder_id = 9,
+        .parent_id = 0,
+        .storage_id = 0,
+        .name = @constCast("Loop"),
+        .sibling = null,
+        .child = null,
+    };
+    loop.child = &loop;
+
+    try std.testing.expectError(error.NestingTooDeep, snapshot(a, &loop, null, 100));
 }
