@@ -8,7 +8,7 @@ const git_commit_unknown = "unknown";
 // for defining build steps and express dependencies between them, allowing the
 // build runner to parallelize the build automatically (and the cache system to
 // know when a step doesn't need to be re-run).
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     // Standard target options allow the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -22,6 +22,12 @@ pub fn build(b: *std.Build) void {
     // of this build script using `b.option()`. All defined flags (including
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
+
+    const os_dir = switch (target.result.os.tag) {
+        .macos => "macos",
+        .linux => "linux",
+        else => return error.UnsupportedTarget,
+    };
 
     const name = b.option(
         []const u8,
@@ -52,7 +58,13 @@ pub fn build(b: *std.Build) void {
             .linkage = .static,
         });
         lib.root_module.addIncludePath(b.path("vendor/libusb"));
+        lib.root_module.addIncludePath(b.path(b.fmt("vendor/libusb/{s}", .{os_dir})));
         lib.root_module.addIncludePath(upstream.path("libusb"));
+        const platform_srcs: []const []const u8 = switch (target.result.os.tag) {
+            .macos => &.{"os/darwin_usb.c"},
+            .linux => &.{ "os/linux_usbfs.c", "os/linux_netlink.c" },
+            else => unreachable,
+        };
         lib.root_module.addCSourceFiles(.{
             .root = upstream.path("libusb"),
             .files = &.{
@@ -64,8 +76,12 @@ pub fn build(b: *std.Build) void {
                 "sync.c",
                 "os/events_posix.c",
                 "os/threads_posix.c",
-                "os/darwin_usb.c",
             },
+            .flags = &.{ "-fvisibility=hidden", "-pthread" },
+        });
+        lib.root_module.addCSourceFiles(.{
+            .root = upstream.path("libusb"),
+            .files = platform_srcs,
             .flags = &.{ "-fvisibility=hidden", "-pthread" },
         });
         if (target.result.os.tag.isDarwin()) {
@@ -90,6 +106,7 @@ pub fn build(b: *std.Build) void {
             .linkage = .static,
         });
         lib.root_module.addIncludePath(b.path("vendor/libmtp"));
+        lib.root_module.addIncludePath(b.path(b.fmt("vendor/libmtp/{s}", .{os_dir})));
         lib.root_module.addIncludePath(upstream.path("src"));
         // libusb-glue.h includes <libusb.h> from our libusb dependency.
         lib.root_module.addIncludePath(libusb_upstream.path("libusb"));
@@ -114,7 +131,7 @@ pub fn build(b: *std.Build) void {
         });
         lib.root_module.linkLibrary(lub);
         // iconv is not part of libSystem on macOS?
-        if (target.result.os.tag.isDarwin()) {
+        if (target.result.os.tag == .macos) {
             lib.root_module.linkSystemLibrary("iconv", .{});
         }
         break :blk lib;
