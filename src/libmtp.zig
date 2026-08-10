@@ -104,6 +104,9 @@ pub extern fn LIBMTP_Clear_Errorstack(device: ?*LIBMTP_mtpdevice_t) void;
 pub extern fn LIBMTP_Get_Filelisting_With_Callback([*c]LIBMTP_mtpdevice_t, ?*const anyopaque, ?*const anyopaque) [*c]LIBMTP_file_t;
 pub extern fn LIBMTP_Get_Folder_List([*c]LIBMTP_mtpdevice_t) [*c]LIBMTP_folder_t;
 
+pub extern fn LIBMTP_destroy_file_t([*c]LIBMTP_file_t) void;
+pub extern fn LIBMTP_destroy_folder_t([*c]LIBMTP_folder_t) void;
+
 test "libmtp links and inits" {
     LIBMTP_Init();
     LIBMTP_debug = 1;

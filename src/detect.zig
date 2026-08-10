@@ -51,6 +51,9 @@ pub fn main(init: process.Init) !void {
 
         const folder_list = libmtp.LIBMTP_Get_Folder_List(device);
         const file_list = libmtp.LIBMTP_Get_Filelisting_With_Callback(device, null, null);
+        defer libmtp.LIBMTP_destroy_file_t(file_list);
+        defer libmtp.LIBMTP_destroy_folder_t(folder_list);
+
         const listing = try model.snapshot(allocator, folder_list, file_list, 100);
         log.info("snapshot: {d} files, {d} folders", .{ listing.files.len, listing.folders.len });
         try listing.render(stdout, allocator);
